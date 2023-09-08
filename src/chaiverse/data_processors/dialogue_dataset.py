@@ -9,14 +9,16 @@ from datasets import concatenate_datasets
 from axolotl.utils.distributed import is_main_process
 
 from chaiverse.data_processors.chatml_processor import ChatMLConvoProcessor
+from chaiverse.data_processors.multichatml_processor import MultiChatMLConvoProcessor
 from chaiverse.data_processors.utils import get_raw_dataset, tokenize_function
 
 
 class BaseProcessor:
-    def __init__(self, tokenizer, max_length, output_format=None):
+    def __init__(self, tokenizer, max_length, output_format=None, multi=False):
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.output_format = output_format
+        self.multi = multi
         self.tokenize_func = self._get_tokenize_function()
 
     def _tokenize(self, dataset, batched=True):
@@ -62,9 +64,16 @@ class ChatMLProcessor(BaseProcessor):
         return tokenized_dataset
 
     def _get_tokenize_function(self):
-        processor = ChatMLConvoProcessor(
-            self.tokenizer, self.output_format, max_length=self.max_length
-        )
+        if self.multi:
+            print("Using MultiChatMLConvoProcessor")
+            processor = MultiChatMLConvoProcessor(
+                self.tokenizer, self.output_format, max_length=self.max_length
+            )
+        else:
+            print("Using ChatMLConvoProcessor")
+            processor = ChatMLConvoProcessor(
+                self.tokenizer, self.output_format, max_length=self.max_length
+            )
         return processor.get_tokenized_convo
 
     def _padding(self, input_ids, attention_mask, label_mask):
@@ -102,7 +111,7 @@ class ChatMLDataset:
         val_set_size=0.01,
         sequence_len=4096,
     ):
-        accepted_formatters = ["chatml", "input_output"]
+        accepted_formatters = ["chatml", "multichatml", "input_output"]
         assert (
             dataset_type in accepted_formatters
         ), f"Input format must be one of {accepted_formatters}"
@@ -110,7 +119,12 @@ class ChatMLDataset:
         if dataset_type == "chatml":
             self.output_format = "pygmalion"
             self.processor = ChatMLProcessor(
-                tokenizer, sequence_len, self.output_format
+                tokenizer, sequence_len, self.output_format, False
+            )
+        elif dataset_type == "multichatml":
+            self.output_format = "pygmalion"
+            self.processor = MultiChatMLProcessor(
+                tokenizer, sequence_len, self.output_format, True
             )
         else:
             self.output_format = "concatenate"
