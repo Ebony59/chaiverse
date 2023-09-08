@@ -4,7 +4,7 @@ DEFAULT_USER_LABELS = ["User", "Me", "You"]
 SYSTEM_LABEL = "System"
 VICUNA_SYSTEM_PROMPT = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions."
 
-class MultiConvoFormatter:
+class ConvoFormatter:
     def __init__(self, tokenizer, max_length):
         self.user_candidates = DEFAULT_USER_LABELS
         self.max_length = max_length
@@ -28,12 +28,12 @@ class MultiConvoFormatter:
             start_idx = 0
         for turn in conversation[start_idx:]:
             prompt = turn["content"]
-            if turn['do_train']:
-                prompt = self._get_train_prompt(label=turn['role'], content=prompt)
+            if turn["role"] == user_label:
+                prompt = self._get_user_prompt(user_label, prompt)
             else:
-                prompt = self._get_non_train_prompt(label=turn['role'], content=prompt)
+                prompt = self._get_bot_prompt(bot_label, prompt)
             formatted_turns.append(
-                {"prompt": prompt, "mask": int(turn['do_train'])}
+                {"prompt": prompt, "mask": int(bot_label == turn["role"])}
             )
         return formatted_turns
 
@@ -54,37 +54,36 @@ class MultiConvoFormatter:
     def _get_system_prompt(self, bot_label, content):
         raise NotImplementedError
 
-    def _get_train_prompt(self, content):
+    def _get_user_prompt(self, content):
         raise NotImplementedError
 
-    def _get_non_train_prompt(self, content):
+    def _get_bot_prompt(self, content):
         raise NotImplementedError
 
 
-class MultiPygmalionFormatter(MultiConvoFormatter):
+class PygmalionFormatter(ConvoFormatter):
     def _get_system_prompt(self, bot_label, content):
         return f"{bot_label}'s Persona: {content}\n###\n<START>\n"
 
-    def _get_non_train_prompt(self, label, content):
-        return f"{label}: {content}\n"
+    def _get_user_prompt(self, user_label, content):
+        return f"{user_label}: {content}\n"
 
-    def _get_train_prompt(self, label, content):
-        return f"{label}: {content}{self.eos_token}\n"
-    
+    def _get_bot_prompt(self, bot_label, content):
+        return f"{bot_label}: {content}{self.eos_token}\n"
 
 
-class VicunaFormatter(MultiConvoFormatter):
+class VicunaFormatter(ConvoFormatter):
     def _get_system_prompt(self, bot_label, content):
         return VICUNA_SYSTEM_PROMPT
 
-    def _get_non_train_prompt(self, label, content):
+    def _get_user_prompt(self, user_label, content):
         return f"USER: {content}\n"
 
-    def _get_train_prompt(self, label, content):
+    def _get_bot_prompt(self, bot_label, content):
         return f"ASSISTANT: {content}{self.eos_token}\n"
 
 
-class MultiChatMLConvoProcessor:
+class ChatMLConvoProcessor:
     def __init__(self, tokenizer, formatter, max_length=512):
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -93,7 +92,7 @@ class MultiChatMLConvoProcessor:
             formatter in accepted_formatters
         ), f"Formatter must be in {accepted_formatters}"
         if formatter == "pygmalion":
-            self.formatter = MultiPygmalionFormatter(self.tokenizer, self.max_length)
+            self.formatter = PygmalionFormatter(self.tokenizer, self.max_length)
         elif formatter == "vicuna":
             self.formatter = VicunaFormatter(self.tokenizer, self.max_length)
 
